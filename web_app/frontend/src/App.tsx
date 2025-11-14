@@ -1,4 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import { ContextPanel } from "./components/ContextPanel";
 import { useRecorder } from "./hooks/useRecorder";
 import { submitImageQuestion, submitInterview } from "./api";
@@ -216,7 +219,9 @@ function App() {
                   <strong>Selected:</strong> {imageAnswer.selected_option}
                 </p>
               )}
-              <p>{imageAnswer.answer}</p>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                {imageAnswer.answer}
+              </ReactMarkdown>
             </div>
           )}
         </section>

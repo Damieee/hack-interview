@@ -88,6 +88,24 @@ button:disabled {
   line-height: 1.5;
 }
 
+.panel :is(pre, code) {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+.panel pre {
+  background: #0f172a;
+  border-radius: 10px;
+  padding: 0.8rem;
+  overflow-x: auto;
+  color: #e2e8f0;
+}
+
+.panel code {
+  font-family: inherit;
+  background: #0f172a;
+  padding: 0.15rem 0.4rem;
+  border-radius: 6px;
+}
 .error {
   color: #f87171;
 }
