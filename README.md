@@ -1,75 +1,68 @@
 # AI Interview Assistant – Monorepo
 
-This repository hosts the full-stack version of the interview prep tool:
+This repository bundles the React/Vite frontend and FastAPI backend for the interview prep tool.
 
 ```
-├── backend/   # FastAPI + OpenAI inference layer (Python / uv)
+├── backend/   # FastAPI + OpenAI logic (Python, uv)
 └── frontend/  # React + TypeScript UI (Vite + pnpm)
 ```
 
-## Prerequisites (local dev)
+## Prerequisites
 
-- Python 3.10+ with [uv](https://docs.astral.sh/uv/) enabled (`pip install uv`)
-- Node.js 18+ with [pnpm](https://pnpm.io/) (`corepack enable pnpm`)
-- OpenAI API key in `backend/.env` (copy from `.env.example`)
+1. `python 3.10+` with [`uv`](https://docs.astral.sh/uv/) installed.
+2. `node 18+` with [`pnpm`](https://pnpm.io/) (`corepack enable pnpm`).
+3. **Single root env file**: copy `.env.example` → `.env` (in the repo root) and set:
+   - Backend keys: `OPENAI_API_KEY`, `DEFAULT_MODEL`, `VISION_MODEL`, etc.
+   - Frontend keys: `VITE_API_URL` (and any future `VITE_*` values).
+
+## Running locally
 
 ### Backend
-
 ```bash
 cd backend
-cp .env.example .env   # fill in OPENAI_API_KEY, DEFAULT_MODEL, etc.
 uv run fastapi_app -- --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend
-
 ```bash
 cd frontend
 pnpm install
 pnpm dev -- --host 0.0.0.0 --port 5173
 ```
 
-Set `VITE_API_URL` in `frontend/.env` if the backend runs on a different host/IP.
+> The frontend automatically reads `VITE_*` values from the root `.env`, so no per-folder env files are needed.
 
-## Docker Deployments
+## Docker deployment
 
-A single container can build the React app, bundle it with the FastAPI backend, and serve both:
+Builds the frontend, installs backend deps via `uv`, serves both from one image:
 
 ```bash
-# From the repo root
 docker build -t interview-assistant .
-
-# Provide secrets via --env-file (never bake real .env into the image)
-docker run --env-file backend/.env -p 8000:8000 interview-assistant
+docker run --env-file ./.env -p 8000:8000 interview-assistant
 ```
 
-The Docker image:
+The container exposes:
 
-- Builds the frontend via pnpm and copies the static assets into the image.
-- Installs backend dependencies with `uv sync`.
-- Serves the API on `0.0.0.0:8000`.
-- Exposes the built frontend at `/` (the API routes remain under `/api/...`).
+- API routes at `http://host:8000/api/...`
+- Frontend SPA at `http://host:8000/`
 
-> ⚠️ Remember to use a production-grade `.env` when running in the cloud (e.g., `OPENAI_API_KEY`, `VISION_MODEL`, custom CORS origins).
+## Access from your phone
 
-## Access from Mobile
-
-1. Run both services (or the Docker container) with `--host 0.0.0.0`.
+1. Start backend/fronted (or the Docker container) with `--host 0.0.0.0`.
 2. Ensure your phone is on the same network.
-3. Visit `http://<machine-ip>:5173` (or the exposed port) from your phone’s browser.
-4. The camera, screenshot, and webcam workflows will upload to the backend automatically.
+3. Open `http://<machine-ip>:5173` (or `:8000` if using Docker) to use the UI. Camera, screenshot, and webcam capture all work from mobile browsers.
 
-## Useful Commands
+## Useful commands
 
 ```bash
-# Frontend QA build
+# Frontend production build
 cd frontend && pnpm run build
 
-# Backend type check / bytecode compile
+# Backend bytecode check
 cd backend && uv run python -m compileall app
 
-# Lint via ruff (if installed)
+# Optional lint (if ruff installed)
 cd backend && uv run ruff check app
 ```
 
-Enjoy the upgraded workflow! The Dockerfile is now the single artifact required for most cloud platforms that accept container images. *** End Patch```} ***!
+The new Dockerfile is ready for cloud platforms that accept container images; supply secrets via runtime env vars, never bake them into the image.

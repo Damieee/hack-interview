@@ -7,7 +7,16 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env", override=False)
+ROOT_DIR = BASE_DIR.parent
+ENV_CANDIDATES = [ROOT_DIR / ".env", BASE_DIR / ".env"]
+
+ENV_FILE = ENV_CANDIDATES[0]
+for candidate in ENV_CANDIDATES:
+    if candidate.exists():
+        ENV_FILE = candidate
+        break
+
+load_dotenv(ENV_FILE, override=False)
 
 
 class Settings(BaseSettings):
@@ -21,7 +30,7 @@ class Settings(BaseSettings):
     allow_origins: list[str] = Field(default=["*"])
 
     class Config:
-        env_file = BASE_DIR / ".env"
+        env_file = ENV_FILE
         env_file_encoding = "utf-8"
         case_sensitive = False
 

@@ -28,8 +28,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 COPY backend/pyproject.toml backend/README.md backend/uv.lock /app/backend/
 COPY backend/app /app/backend/app
 COPY backend/fastapi_app.py /app/backend/fastapi_app.py
-COPY backend/.env.example /app/backend/.env.example
-
 RUN pip install --upgrade pip && pip install uv
 RUN cd /app/backend && uv sync --frozen --no-dev
 
