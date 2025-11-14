@@ -116,46 +116,78 @@ async def answer_from_image(
 
     question_text = question.strip() if question else ""
     if not question_text:
-        question_text = "Analyze this image and answer the question shown."
+        question_text = (
+            "Analyze this screenshot. Decide if it contains a multiple-choice question "
+            "or an open-ended/coding question. Follow the rules below."
+        )
 
-    option_text = ""
+    option_block = ""
+    normalized_options: List[str] = []
     if options:
-        normalized = [opt.strip() for opt in options if opt.strip()]
-        if normalized:
-            option_text = "\n".join(
-                f"Option {chr(65 + idx)}: {value}" for idx, value in enumerate(normalized)
-            )
-            question_text += (
-                "\nChoose the single best option. Respond with the option label "
-                "(e.g., 'Option A') and a short explanation."
+        normalized_options = [opt.strip() for opt in options if opt.strip()]
+        if normalized_options:
+            option_block = "\n".join(
+                f"Option {chr(65 + idx)}: {value}"
+                for idx, value in enumerate(normalized_options)
             )
 
-    logger.debug("Sending image question to model %s", model or settings.vision_model)
-    response = client.responses.create(
-        model=model or settings.vision_model,
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": question_text},
-                    *(  # options text if provided
-                        [{"type": "input_text", "text": option_text}]
-                        if option_text
-                        else []
-                    ),
-                    {
-                        "type": "input_image",
-                        "image_url": data_url,
-                    },
-                ],
-            }
-        ],
+    system_prompt = (
+        "You are an AI exam assistant.\n"
+        "Rules:\n"
+        "1. If the prompt (or screenshot) is multiple-choice, respond ONLY with the winning option label "
+        "followed by its text, e.g., 'Option C: Binary Search'. No extra explanation.\n"
+        "2. If the prompt requires writing code (DSA / algorithms / implementation), respond with a fully working "
+        "Python solution inside a fenced ```python block. Provide only the code (with minimal comments if needed), "
+        "no prose before or after.\n"
+        "3. Otherwise, provide the most direct correct answer. Just make sure you answer every kind of questions accurately so the user doesnt fail.\n"
     )
-    answer_text = response.output[0].content[0].text  # using responses API structure
+
+    content_blocks = [
+        {"type": "input_text", "text": question_text},
+    ]
+    if option_block:
+        content_blocks.append({"type": "input_text", "text": option_block})
+    content_blocks.append({"type": "input_image", "image_url": data_url})
+
+    def _call(extra_instruction: Optional[str] = None) -> str:
+        user_blocks = content_blocks.copy()
+        if extra_instruction:
+            user_blocks = [
+                {"type": "input_text", "text": extra_instruction},
+                *user_blocks,
+            ]
+        logger.debug("Sending image question to model %s", model or settings.vision_model)
+        response = client.responses.create(
+            model=model or settings.vision_model,
+            input=[
+                {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+                {"role": "user", "content": user_blocks},
+            ],
+        )
+        return response.output[0].content[0].text
+
+    answer_text = _call()
+
+    def needs_follow_up(text: str) -> bool:
+        cleaned = text.strip().lower()
+        placeholders = {
+            "coding question",
+            "open-ended/coding question",
+            "open ended coding question",
+            "this is a coding question",
+            "write code",
+        }
+        return cleaned in placeholders or len(cleaned) < 40
+
+    if not normalized_options and needs_follow_up(answer_text):
+        logger.debug("Initial vision response looked incomplete; requesting explicit code answer.")
+        answer_text = _call(
+            "Provide the full Python solution now. Respond only with a ```python fenced block containing the code."
+        )
 
     selected_option: Optional[str] = None
-    if options:
-        for idx, opt in enumerate(options):
+    if normalized_options:
+        for idx, _ in enumerate(normalized_options):
             label = f"Option {chr(65 + idx)}"
             if label.lower() in answer_text.lower():
                 selected_option = label
