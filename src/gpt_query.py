@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from dotenv import load_dotenv
 from loguru import logger
 from openai import ChatCompletion, OpenAI
@@ -27,9 +29,13 @@ def transcribe_audio(path_to_file: str = OUTPUT_FILE_NAME) -> str:
     Returns:
         str: The audio transcription.
     """
-    logger.debug(f"Transcribing audio from: {path_to_file}...")
+    audio_path: Path = Path(path_to_file)
+    if not audio_path.is_file():
+        raise FileNotFoundError(f"Recording not found at {audio_path}")
 
-    with open(path_to_file, "rb") as audio_file:
+    logger.debug(f"Transcribing audio from: {audio_path}...")
+
+    with audio_path.open("rb") as audio_file:
         try:
             transcript: str = client.audio.transcriptions.create(
                 model="whisper-1", file=audio_file, response_format="text"

@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -24,7 +25,7 @@ def find_blackhole_device_id() -> Optional[int]:
     return None
 
 
-def record(button: sg.Element) -> None:
+def record(button: sg.Element) -> Optional[str]:
     """
     Record audio from the BlackHole device while the record button is active.
     Save the audio to a file.
@@ -34,6 +35,7 @@ def record(button: sg.Element) -> None:
     """
     logger.debug("Recording...")
     frames: List[np.ndarray] = []
+    saved_path: Optional[str] = None
 
     # Find BlackHole device ID
     device_id: Optional[int] = find_blackhole_device_id()
@@ -51,18 +53,20 @@ def record(button: sg.Element) -> None:
 
     except Exception as e:
         logger.error(f"An error occurred during recording: {e}")
+    finally:
+        # Save audio file
+        if frames:
+            audio_data: np.ndarray = np.vstack(frames)
+            saved_path = save_audio_file(audio_data)
+        else:
+            logger.warning("No audio recorded.")
 
-    # Save audio file
-    if frames:
-        audio_data: np.ndarray = np.vstack(frames)
-        save_audio_file(audio_data)
-    else:
-        logger.warning("No audio recorded.")
+    return saved_path
 
 
 def save_audio_file(
     audio_data: np.ndarray, output_file_name: str = OUTPUT_FILE_NAME
-) -> None:
+) -> str:
     """
     Save the audio data to a file.
 
@@ -77,4 +81,6 @@ def save_audio_file(
         format="WAV",
         subtype="PCM_16",
     )
-    logger.debug(f"Audio saved to: {output_file_name}...")
+    output_path: str = str(Path(output_file_name).resolve())
+    logger.debug(f"Audio saved to: {output_path}...")
+    return output_path

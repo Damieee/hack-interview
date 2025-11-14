@@ -289,10 +289,16 @@ def initialize_window() -> sg.Window:
         List[Union[sg.Text, sg.Button, sg.Frame, sg.Combo, sg.Input]]
     ] = build_layout()
 
-    return sg.Window(
+    window: sg.Window = sg.Window(
         "Interview",
         layout,
         return_keyboard_events=True,
         use_default_focus=False,
         resizable=True,
     )
+    window.metadata = {
+        "recording_in_progress": False,
+        "pending_transcription": False,
+        "last_recording_path": None,
+    }
+    return window
