@@ -224,13 +224,13 @@ def build_layout() -> (
     # Create elements
     record_button: sg.Button = create_button(
         image_data=OFF_IMAGE,
-        tooltip="Start/Stop Recording",
+        tooltip="Toggle live listening",
         key="-RECORD_BUTTON-",
     )
     analyze_button: sg.Button = create_button(
         image_data=GREY_BUTTON,
         text="Analyze",
-        tooltip="Transcribe and Analyze",
+        tooltip="Re-run analysis for the last captured snippet",
         key="-ANALYZE_BUTTON-",
         subsample=2,
     )
@@ -256,8 +256,8 @@ def build_layout() -> (
         size=(int(APPLICATION_WIDTH * 0.7), 3),
         key="-INSTRUCTIONS-",
         text=(
-            "Press 'R' to start recording\n"
-            "Press 'A' to transcribe the recording and provide answers\n"
+            "Live listening automatically transcribes each answer once you finish speaking.\n"
+            "Press 'R' (or the mic icon) to pause/resume listening; 'A' replays the last snippet.\n"
             "Use the context panel to add the role, company, and resume details."
         ),
     )
@@ -385,10 +385,11 @@ def initialize_window() -> sg.Window:
         return_keyboard_events=True,
         use_default_focus=False,
         resizable=True,
+        finalize=True,
     )
     window.metadata = {
-        "recording_in_progress": False,
-        "pending_transcription": False,
+        "transcription_in_progress": False,
+        "transcription_queue": [],
         "last_recording_path": None,
         "context_panel_open": True,
     }

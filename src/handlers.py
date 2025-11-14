@@ -40,9 +40,19 @@ CONTEXT_FIELD_LABELS: Dict[str, str] = {
     "-RESUME_INPUT-": "Resume Highlights",
 }
 
+AUTO_SEGMENT_EVENT = "-AUTO_SEGMENT-"
+
 
 def _should_block_hotkeys(focused_key: Optional[str]) -> bool:
     return focused_key in CONTEXT_TEXT_INPUT_KEYS if focused_key else False
+
+
+def _focused_element(window: sg.Window) -> Optional[sg.Element]:
+    try:
+        return window.find_element_with_focus()
+    except Exception as error:
+        logger.debug(f"Could not determine focused element: {error}")
+        return None
 
 
 def toggle_context_panel(window: sg.Window) -> None:
@@ -87,6 +97,72 @@ def build_context_payload(values: Dict[str, Any]) -> str:
     return "\n\n".join(sections).strip()
 
 
+def _get_listener(window: sg.Window) -> audio.ContinuousRecorder:
+    metadata: Dict[str, Any] = _window_metadata(window)
+    listener: Optional[audio.ContinuousRecorder] = metadata.get("listener")
+    if listener is None:
+        listener = audio.ContinuousRecorder(
+            segment_callback=lambda path: window.write_event_value(AUTO_SEGMENT_EVENT, path)
+        )
+        metadata["listener"] = listener
+    return listener
+
+
+def initialize_auto_listening(window: sg.Window) -> None:
+    metadata: Dict[str, Any] = _window_metadata(window)
+    if metadata.get("auto_initialized"):
+        return
+    metadata["auto_initialized"] = True
+    button: sg.Element = window["-RECORD_BUTTON-"]
+    if not getattr(button.metadata, "state", False):
+        recording_event(window)
+
+
+def shutdown_listener(window: sg.Window) -> None:
+    metadata: Dict[str, Any] = _window_metadata(window)
+    listener: Optional[audio.ContinuousRecorder] = metadata.get("listener")
+    if listener:
+        listener.stop()
+    metadata["listener"] = None
+
+
+def _enqueue_transcription(window: sg.Window, audio_path: str) -> None:
+    metadata: Dict[str, Any] = _window_metadata(window)
+    queue: List[str] = metadata.setdefault("transcription_queue", [])
+    queue.append(audio_path)
+    metadata["last_recording_path"] = audio_path
+    _process_transcription_queue(window)
+
+
+def _process_transcription_queue(window: sg.Window) -> None:
+    metadata: Dict[str, Any] = _window_metadata(window)
+    if metadata.get("transcription_in_progress"):
+        return
+
+    queue: List[str] = metadata.get("transcription_queue", [])
+    if not queue:
+        return
+
+    next_path: str = queue.pop(0)
+    metadata["current_audio_path"] = next_path
+    metadata["transcription_in_progress"] = True
+    _start_transcription(window, next_path)
+
+
+def _start_transcription(window: sg.Window, audio_path: str) -> None:
+    window["-TRANSCRIBED_TEXT-"].update("Transcribing audio...")
+    window.perform_long_operation(
+        lambda path=audio_path: gpt_query.transcribe_audio(path),
+        "-WHISPER-",
+    )
+
+
+def _mark_transcription_complete(window: sg.Window) -> None:
+    metadata: Dict[str, Any] = _window_metadata(window)
+    metadata["transcription_in_progress"] = False
+    _process_transcription_queue(window)
+
+
 def handle_events(window: sg.Window, event: str, values: Dict[str, Any]) -> None:
     """
     Handle the events. Record audio, transcribe audio, generate quick and full answers.
@@ -107,7 +183,13 @@ def handle_events(window: sg.Window, event: str, values: Dict[str, Any]) -> None
         load_context_from_file(window, LOAD_BUTTON_TARGETS[event])
         return
 
-    focused_element: Optional[sg.Element] = window.find_element_with_focus()
+    if event == AUTO_SEGMENT_EVENT:
+        audio_path: Optional[str] = values.get(AUTO_SEGMENT_EVENT)
+        if audio_path:
+            _enqueue_transcription(window, audio_path)
+        return
+
+    focused_element: Optional[sg.Element] = _focused_element(window)
     focused_key: Optional[str] = getattr(focused_element, "Key", None)
     hotkeys_allowed: bool = not _should_block_hotkeys(focused_key)
 
@@ -128,13 +210,11 @@ def handle_events(window: sg.Window, event: str, values: Dict[str, Any]) -> None
     ):
         window["-ANALYZE_BUTTON-"].set_focus()
 
-    # When the recording thread finished saving audio
-    elif event == "-RECORDED-":
-        recording_complete_event(window, values)
-
     # When the transcription is ready
     elif event == "-WHISPER-":
+        _mark_transcription_complete(window)
         answer_events(window, values)
+        return
 
     # When the quick answer is ready
     elif event == "-QUICK_ANSWER-":
@@ -151,7 +231,7 @@ def handle_events(window: sg.Window, event: str, values: Dict[str, Any]) -> None
 
 def recording_event(window: sg.Window) -> None:
     """
-    Handle the recording event. Record audio and update the record button.
+    Toggle the continuous listening state.
 
     Args:
         window (sg.Window): The window element.
@@ -159,60 +239,45 @@ def recording_event(window: sg.Window) -> None:
     button: sg.Element = window["-RECORD_BUTTON-"]
     button.metadata.state = not button.metadata.state
     button.update(image_data=ON_IMAGE if button.metadata.state else OFF_IMAGE)
-    metadata: Dict[str, Any] = _window_metadata(window)
 
-    # Record audio
     if button.metadata.state:
-        metadata["recording_in_progress"] = True
-        metadata["pending_transcription"] = False
-        window.perform_long_operation(lambda: audio.record(button), "-RECORDED-")
+        listener: audio.ContinuousRecorder = _get_listener(window)
+        window["-TRANSCRIBED_TEXT-"].update("Listening for speech...")
+        try:
+            listener.start()
+        except Exception:
+            button.metadata.state = False
+            button.update(image_data=OFF_IMAGE)
+            window["-TRANSCRIBED_TEXT-"].update(
+                "Unable to start microphone. Check audio input settings."
+            )
     else:
-        logger.debug("Stopping recording...")
+        shutdown_listener(window)
+        window["-TRANSCRIBED_TEXT-"].update("Listening paused.")
 
 
 def transcribe_event(window: sg.Window) -> None:
     """
-    Handle the transcribe event. Transcribe audio and update the text area.
+    Manually trigger transcription for the last captured audio segment.
 
     Args:
         window (sg.Window): The window element.
     """
     metadata: Dict[str, Any] = _window_metadata(window)
-    record_button: sg.Element = window["-RECORD_BUTTON-"]
-
-    # If we are still recording, stop first and wait for completion
-    if record_button.metadata.state:
-        recording_event(window)
-
-    if metadata.get("recording_in_progress"):
-        metadata["pending_transcription"] = True
-        window["-TRANSCRIBED_TEXT-"].update("Finishing recording...")
-        return
-
     recorded_path: Any = metadata.get("last_recording_path")
     if not recorded_path:
-        output_path = Path(OUTPUT_FILE_NAME)
-        if output_path.is_file():
-            recorded_path = str(output_path.resolve())
+        fallback = Path(OUTPUT_FILE_NAME)
+        if fallback.is_file():
+            recorded_path = str(fallback.resolve())
 
     if not recorded_path or not Path(recorded_path).is_file():
         window["-TRANSCRIBED_TEXT-"].update(
-            "No recording found. Press 'R' to record audio first."
-        )
-        sg.popup_error(
-            "No recording found. Please record audio before transcribing.",
-            title="Recording Missing",
+            "No captured audio yet. Speak while the listener is active."
         )
         return
 
-    metadata["pending_transcription"] = False
-    transcribed_text: sg.Element = window["-TRANSCRIBED_TEXT-"]
-    transcribed_text.update("Transcribing audio...")
-
-    # Transcribe audio
-    window.perform_long_operation(
-        lambda: gpt_query.transcribe_audio(recorded_path), "-WHISPER-"
-    )
+    _enqueue_transcription(window, recorded_path)
+    window["-TRANSCRIBED_TEXT-"].update("Queued last audio snippet for processing...")
 
 
 def answer_events(window: sg.Window, values: Dict[str, Any]) -> None:
@@ -266,22 +331,3 @@ def answer_events(window: sg.Window, values: Dict[str, Any]) -> None:
         ),
         "-FULL_ANSWER-",
     )
-
-
-def recording_complete_event(window: sg.Window, values: Dict[str, Any]) -> None:
-    """
-    Handle the completion of the background recording operation.
-    """
-    metadata: Dict[str, Any] = _window_metadata(window)
-    metadata["recording_in_progress"] = False
-    recorded_path: Any = values.get("-RECORDED-")
-
-    if recorded_path:
-        metadata["last_recording_path"] = recorded_path
-        logger.debug(f"Recording saved at {recorded_path}")
-    else:
-        metadata["last_recording_path"] = None
-        logger.warning("Recording finished without audio output.")
-
-    if metadata.pop("pending_transcription", False):
-        transcribe_event(window)

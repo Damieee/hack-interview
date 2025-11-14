@@ -24,10 +24,15 @@ def main() -> None:
 
     import PySimpleGUI as sg
     from src.gui import initialize_window
-    from src.handlers import handle_events
+    from src.handlers import (
+        handle_events,
+        initialize_auto_listening,
+        shutdown_listener,
+    )
 
     window: "sg.Window" = initialize_window()
     logger.debug("Application started.")
+    initialize_auto_listening(window)
 
     while True:
         event: str
@@ -36,10 +41,12 @@ def main() -> None:
 
         if event in ["-CLOSE_BUTTON-", sg.WIN_CLOSED]:
             logger.debug("Closing...")
+            shutdown_listener(window)
             break
 
         handle_events(window, event, values)
 
+    shutdown_listener(window)
     window.close()
 
 
