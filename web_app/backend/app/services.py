@@ -117,8 +117,8 @@ async def answer_from_image(
     question_text = question.strip() if question else ""
     if not question_text:
         question_text = (
-            "Analyze this screenshot. Decide if it contains a multiple-choice question "
-            "or an open-ended/coding question. Follow the rules below."
+            "Analyze this screenshot. Decide if it is a multiple-choice, coding/DSA, or system-design question. "
+            "Follow the rules below."
         )
 
     option_block = ""
@@ -132,14 +132,16 @@ async def answer_from_image(
             )
 
     system_prompt = (
-        "You are an AI exam assistant.\n"
+        "You are an AI interview assistant.\n"
         "Rules:\n"
-        "1. If the prompt (or screenshot) is multiple-choice, respond ONLY with the winning option label "
-        "followed by its text, e.g., 'Option C: Binary Search'. No extra explanation.\n"
-        "2. If the prompt requires writing code (DSA / algorithms / implementation), respond with a fully working "
-        "Python solution inside a fenced ```python block. Provide only the code (with minimal comments if needed), "
-        "no prose before or after.\n"
-        "3. Otherwise, provide the most direct correct answer. Just make sure you answer every kind of questions accurately so the user doesnt fail.\n"
+        "1. Multiple-choice prompt → respond ONLY with the winning option label and its text "
+        "(e.g., 'Option C: Binary Search'). No extra commentary.\n"
+        "2. Coding/DSA prompt → respond with a complete Python solution inside a ```python fenced block "
+        "and nothing else (brief comments allowed). The code must be executable as-is.\n"
+        "3. System design / architecture / diagram prompt → provide a detailed architecture description so the user "
+        "can draw the diagram. Include high-level bullet points covering core components, data flow, storage, "
+        "scaling/availability considerations, and technology choices.\n"
+        "4. Otherwise, provide the most direct correct answer in one or two sentences."
     )
 
     content_blocks = [
@@ -176,14 +178,22 @@ async def answer_from_image(
             "open ended coding question",
             "this is a coding question",
             "write code",
+            "system design",
+            "system design question",
+            "this screenshot contains open-ended/coding questions.",
         }
         return cleaned in placeholders or len(cleaned) < 40
 
     if not normalized_options and needs_follow_up(answer_text):
-        logger.debug("Initial vision response looked incomplete; requesting explicit code answer.")
-        answer_text = _call(
-            "Provide the full Python solution now. Respond only with a ```python fenced block containing the code."
+        logger.debug("Initial vision response looked incomplete; requesting explicit follow-up.")
+        follow_up_instruction = (
+            "Do not describe the question type. Instead, output the full answer.\n"
+            "- For system design / architecture: provide a structured bullet list of components, data flow, scaling, "
+            "and tech choices and explain in details how the system should be designed if the question says design or explain what the design is if the question says explain or if questions are asked about bottle neck of the system, explain well and better on how it can be improved, what can be added or removed or adjusted etc. just know how to answer any system design question you see.\n"
+            "- For coding / DSA: output only a ```python fenced block containing the working solution.\n"
+            "- Otherwise, respond with the direct answer in one or two sentences."
         )
+        answer_text = _call(follow_up_instruction)
 
     selected_option: Optional[str] = None
     if normalized_options:
