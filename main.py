@@ -1,17 +1,32 @@
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
-import PySimpleGUI as sg
 from loguru import logger
 
-from src.gui import initialize_window
-from src.handlers import handle_events
+from src.utils.display import DisplayNotAvailableError, ensure_display
+
+if TYPE_CHECKING:
+    import PySimpleGUI as sg
 
 
 def main() -> None:
     """
     Main function. Initialize the window and handle the events.
     """
-    window: sg.Window = initialize_window()
+    try:
+        ensure_display()
+    except DisplayNotAvailableError as exc:
+        logger.error(exc)
+        logger.info(
+            "If you're running headless (e.g. in a container or CI), forward an X11 "
+            "display or use a virtual display such as Xvfb before launching the GUI."
+        )
+        return
+
+    import PySimpleGUI as sg
+    from src.gui import initialize_window
+    from src.handlers import handle_events
+
+    window: "sg.Window" = initialize_window()
     logger.debug("Application started.")
 
     while True:
