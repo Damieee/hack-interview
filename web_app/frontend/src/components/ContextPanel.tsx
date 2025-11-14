@@ -62,4 +62,3 @@ export function ContextPanel({ values, onChange }: Props) {
     </div>
   );
 }
-

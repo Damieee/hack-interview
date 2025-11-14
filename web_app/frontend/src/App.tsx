@@ -39,6 +39,9 @@ function App() {
   );
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [screenshotSupported, setScreenshotSupported] = useState<boolean>(
+    !!navigator.mediaDevices?.getDisplayMedia,
+  );
 
   const contextSummary = useMemo(() => {
     const entries = Object.entries(contextFields)
@@ -78,8 +81,7 @@ function App() {
   });
 
   const handleImageUpload = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
+    async (file: Blob | File | null) => {
       if (!file) return;
       setImageLoading(true);
       setImageError(null);
@@ -98,11 +100,49 @@ function App() {
         );
       } finally {
         setImageLoading(false);
-        event.target.value = "";
       }
     },
     [imagePrompt, imageOptions, model],
   );
+
+  const requestScreenshot = useCallback(async () => {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setScreenshotSupported(false);
+      setImageError("Screen capture is not supported in this browser.");
+      return;
+    }
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "monitor" },
+      });
+      const track = stream.getVideoTracks()[0];
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      await video.play();
+
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext("2d");
+      context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      track.stop();
+      if (blob) {
+        await handleImageUpload(blob);
+      }
+    } catch (err) {
+      setImageError(
+        err instanceof Error
+          ? err.message
+          : "Unable to capture screen. Please allow permissions.",
+      );
+    } finally {
+      stream?.getTracks().forEach((t) => t.stop());
+    }
+  }, [handleImageUpload]);
 
   return (
     <div className="app-shell">
@@ -203,12 +243,26 @@ function App() {
             value={imageOptions}
             onChange={(event) => setImageOptions(event.target.value)}
           />
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleImageUpload}
-          />
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <label className="upload-button">
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: "none" }}
+                onChange={(event) => handleImageUpload(event.target.files?.[0] ?? null)}
+              />
+              📷 Choose Photo
+            </label>
+            <button
+              type="button"
+              className="secondary"
+              disabled={!screenshotSupported || imageLoading}
+              onClick={requestScreenshot}
+            >
+              🖥️ Capture Screen
+            </button>
+          </div>
           {imageLoading && <p className="status">Analyzing image…</p>}
           {imageError && <p className="error">{imageError}</p>}
           {imageAnswer && (

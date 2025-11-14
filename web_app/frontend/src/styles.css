@@ -67,6 +67,17 @@ button.secondary {
   color: #e2e8f0;
 }
 
+.upload-button {
+  border: 1px dashed #38bdf8;
+  color: #38bdf8;
+  padding: 0.7rem 1rem;
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
