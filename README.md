@@ -37,6 +37,8 @@ Hack Interview application is a tool designed to assist in job interviews using 
    pip install -r requirements.txt
    ```
 
+   > ℹ️ PySimpleGUI now ships from a private PyPI index. The `requirements.txt` file already adds `https://PySimpleGUI.net/install` as an extra index, so the above command will fetch the real package instead of the placeholder hosted on PyPI. If you install dependencies manually, remember to include `--extra-index-url https://PySimpleGUI.net/install` in your pip command.
+
 3. **BlackHole**: If using MacOS, install [BlackHole](https://github.com/ExistentialAudio/BlackHole) and set up a [Multi Output Device](https://github.com/ExistentialAudio/BlackHole/wiki/Multi-Output-Device)
 
 4. **Environment Setup**:
@@ -45,6 +47,7 @@ Hack Interview application is a tool designed to assist in job interviews using 
 ## Usage
 
 - **Starting the Application**: Run `python main.py` to launch the GUI.
+- **Headless environments**: The GUI needs an X11/Wayland display. If you're inside a container/CI job, start a virtual display (e.g. `Xvfb`) or forward your host display before running `python main.py`. Without a display the app now exits gracefully with instructions.
 - *(optional)* **Setup**: You can choose the OpenAI model to use for response generation and the position you are being interviewed for. The default settings are set in the `src/config.py` file.
 - **Recording**: Press `R` or click the big red toggle button to start/stop audio recording. It will create a `recording.wav` file in the project directory.
 - **Transcription and Response Generation**: Press `A` or click the 'Analyze' button to transcribe the recorded audio and generate answers.
