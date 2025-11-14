@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import PySimpleGUI as sg
 from loguru import logger
@@ -18,6 +18,75 @@ def _window_metadata(window: sg.Window) -> Dict[str, Any]:
     return window.metadata
 
 
+CONTEXT_TEXT_INPUT_KEYS = {
+    "-POSITION_INPUT-",
+    "-JOB_DESC_INPUT-",
+    "-COMPANY_INFO_INPUT-",
+    "-ABOUT_YOU_INPUT-",
+    "-RESUME_INPUT-",
+}
+
+LOAD_BUTTON_TARGETS: Dict[str, str] = {
+    "-LOAD_JOB_DESC-": "-JOB_DESC_INPUT-",
+    "-LOAD_COMPANY_INFO-": "-COMPANY_INFO_INPUT-",
+    "-LOAD_ABOUT_YOU-": "-ABOUT_YOU_INPUT-",
+    "-LOAD_RESUME-": "-RESUME_INPUT-",
+}
+
+CONTEXT_FIELD_LABELS: Dict[str, str] = {
+    "-JOB_DESC_INPUT-": "Job Description",
+    "-COMPANY_INFO_INPUT-": "About the Company",
+    "-ABOUT_YOU_INPUT-": "About You",
+    "-RESUME_INPUT-": "Resume Highlights",
+}
+
+
+def _should_block_hotkeys(focused_key: Optional[str]) -> bool:
+    return focused_key in CONTEXT_TEXT_INPUT_KEYS if focused_key else False
+
+
+def toggle_context_panel(window: sg.Window) -> None:
+    metadata: Dict[str, Any] = _window_metadata(window)
+    new_state: bool = not metadata.get("context_panel_open", True)
+    metadata["context_panel_open"] = new_state
+    window["-CONTEXT_PANEL-"].update(visible=new_state)
+    button_text: str = "Show Context Panel" if not new_state else "Hide Context Panel"
+    window["-TOGGLE_CONTEXT_PANEL-"].update(button_text)
+
+
+def load_context_from_file(window: sg.Window, target_key: str) -> None:
+    file_path: Optional[str] = sg.popup_get_file(
+        "Select a text file", keep_on_top=True, no_window=True
+    )
+    if not file_path:
+        return
+
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except Exception as error:
+        sg.popup_error(
+            f"Unable to load file:\n{error}",
+            title="File Error",
+        )
+        return
+
+    window[target_key].update(text)
+
+
+def build_context_payload(values: Dict[str, Any]) -> str:
+    sections: List[str] = []
+    position_value: Optional[str] = values.get("-POSITION_INPUT-")
+    if position_value and position_value.strip():
+        sections.append(f"Target Position: {position_value.strip()}")
+
+    for key, label in CONTEXT_FIELD_LABELS.items():
+        data = values.get(key)
+        if data and data.strip():
+            sections.append(f"{label}:\n{data.strip()}")
+
+    return "\n\n".join(sections).strip()
+
+
 def handle_events(window: sg.Window, event: str, values: Dict[str, Any]) -> None:
     """
     Handle the events. Record audio, transcribe audio, generate quick and full answers.
@@ -27,16 +96,36 @@ def handle_events(window: sg.Window, event: str, values: Dict[str, Any]) -> None
         event (str): The event.
         values (Dict[str, Any]): The values of the window.
     """
-    # If the user is not focused on the position input, process the events
-    focused_element: sg.Element = window.find_element_with_focus()
-    if not focused_element or focused_element.Key != "-POSITION_INPUT-":
-        if event in ("r", "R", "-RECORD_BUTTON-"):
-            recording_event(window)
-        elif event in ("a", "A", "-ANALYZE_BUTTON-"):
-            transcribe_event(window)
+    if event is None:
+        return
 
-    # If the user is focused on the position input
-    if event[:6] in ("Return", "Escape"):
+    if event == "-TOGGLE_CONTEXT_PANEL-":
+        toggle_context_panel(window)
+        return
+
+    if event in LOAD_BUTTON_TARGETS:
+        load_context_from_file(window, LOAD_BUTTON_TARGETS[event])
+        return
+
+    focused_element: Optional[sg.Element] = window.find_element_with_focus()
+    focused_key: Optional[str] = getattr(focused_element, "Key", None)
+    hotkeys_allowed: bool = not _should_block_hotkeys(focused_key)
+
+    if event in ("-RECORD_BUTTON-",):
+        recording_event(window)
+    elif event in ("-ANALYZE_BUTTON-",):
+        transcribe_event(window)
+    elif hotkeys_allowed and event in ("r", "R"):
+        recording_event(window)
+    elif hotkeys_allowed and event in ("a", "A"):
+        transcribe_event(window)
+
+    # If the user is focused on the position input allow Enter/Esc to trigger analyze focus
+    if (
+        focused_key == "-POSITION_INPUT-"
+        and isinstance(event, str)
+        and event[:6] in ("Return", "Escape")
+    ):
         window["-ANALYZE_BUTTON-"].set_focus()
 
     # When the recording thread finished saving audio
@@ -146,6 +235,8 @@ def answer_events(window: sg.Window, values: Dict[str, Any]) -> None:
     model: str = values["-MODEL_COMBO-"]
     position: str = values["-POSITION_INPUT-"]
 
+    context_payload: str = build_context_payload(values)
+
     # Generate quick answer
     logger.debug("Generating quick answer...")
     quick_answer.update("Generating quick answer...")
@@ -156,6 +247,7 @@ def answer_events(window: sg.Window, values: Dict[str, Any]) -> None:
             temperature=0,
             model=model,
             position=position,
+            context=context_payload,
         ),
         "-QUICK_ANSWER-",
     )
@@ -170,6 +262,7 @@ def answer_events(window: sg.Window, values: Dict[str, Any]) -> None:
             temperature=0.7,
             model=model,
             position=position,
+            context=context_payload,
         ),
         "-FULL_ANSWER-",
     )

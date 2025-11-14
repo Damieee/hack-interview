@@ -150,6 +150,68 @@ def create_column(
     )
 
 
+def _context_section(
+    title: str, multiline_key: str, load_button_key: str, height: int = 6
+) -> List[List[sg.Element]]:
+    """
+    Helper to build a labelled multiline input with a load-from-file button.
+    """
+    return [
+        [
+            sg.Text(title, font=("Any", 10, "bold")),
+            sg.Push(),
+            sg.Button("Load text", key=load_button_key, size=(12, 1)),
+        ],
+        [
+            sg.Multiline(
+                key=multiline_key,
+                size=(38, height),
+                expand_x=True,
+                expand_y=False,
+                autoscroll=True,
+                no_scrollbar=False,
+                border_width=1,
+            )
+        ],
+    ]
+
+
+def build_context_panel() -> sg.Column:
+    """
+    Build the collapsible panel where the user can provide supporting context.
+    """
+    layout: List[List[sg.Element]] = [
+        [sg.Text("Interview Context", font=("Any", 12, "bold"))],
+        [
+            sg.Text(
+                "Paste or load the job description, company info, and your resume "
+                "so answers can stay specific.",
+                size=(38, 3),
+                font=("Any", 9),
+            )
+        ],
+    ]
+
+    sections: List[Tuple[str, str, str, int]] = [
+        ("Job Description", "-JOB_DESC_INPUT-", "-LOAD_JOB_DESC-", 6),
+        ("About the Company", "-COMPANY_INFO_INPUT-", "-LOAD_COMPANY_INFO-", 4),
+        ("About You", "-ABOUT_YOU_INPUT-", "-LOAD_ABOUT_YOU-", 4),
+        ("Resume Highlights", "-RESUME_INPUT-", "-LOAD_RESUME-", 8),
+    ]
+
+    for title, key, load_key, height in sections:
+        layout.extend(_context_section(title, key, load_key, height))
+        layout.append([sg.HorizontalSeparator()])
+
+    return sg.Column(
+        layout,
+        key="-CONTEXT_PANEL-",
+        pad=(0, 0),
+        expand_y=True,
+        vertical_alignment="top",
+    )
+
+
 def build_layout() -> (
     List[List[Union[sg.Text, sg.Button, sg.Frame, sg.Combo, sg.Input]]]
 ):
@@ -191,9 +253,13 @@ def build_layout() -> (
     )
 
     instructions: sg.Text = create_text_area(
-        size=(int(APPLICATION_WIDTH * 0.7), 2),
+        size=(int(APPLICATION_WIDTH * 0.7), 3),
         key="-INSTRUCTIONS-",
-        text="Press 'R' to start recording\nPress 'A' to transcribe the recording and provide answers",
+        text=(
+            "Press 'R' to start recording\n"
+            "Press 'A' to transcribe the recording and provide answers\n"
+            "Use the context panel to add the role, company, and resume details."
+        ),
     )
 
     model = sg.Combo(
@@ -271,7 +337,31 @@ def build_layout() -> (
         key="-COL4-",
     )
 
-    layout = [[col1, col2], [col3], [col4]]
+    main_layout = [[col1, col2], [col3], [col4]]
+    main_column = sg.Column(
+        main_layout,
+        key="-MAIN_CONTENT-",
+        expand_x=True,
+        expand_y=True,
+    )
+
+    context_panel = build_context_panel()
+    toggle_button = sg.Button(
+        "Hide Context Panel",
+        key="-TOGGLE_CONTEXT_PANEL-",
+        enable_events=True,
+    )
+    context_column = sg.Column(
+        [
+            [toggle_button],
+            [sg.pin(context_panel)],
+        ],
+        key="-CONTEXT_COLUMN-",
+        pad=((0, 15), (0, 0)),
+        vertical_alignment="top",
+    )
+
+    layout = [[context_column, main_column]]
 
     return layout
 
@@ -300,5 +390,6 @@ def initialize_window() -> sg.Window:
         "recording_in_progress": False,
         "pending_transcription": False,
         "last_recording_path": None,
+        "context_panel_open": True,
     }
     return window

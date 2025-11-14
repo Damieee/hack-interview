@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Dict, List
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -56,6 +57,7 @@ def generate_answer(
     temperature: float = 0.7,
     model: str = DEFAULT_MODEL,
     position: str = DEFAULT_POSITION,
+    context: str = "",
 ) -> str:
     """
     Generate an answer to the question using the OpenAI API.
@@ -66,6 +68,7 @@ def generate_answer(
         temperature (float, optional): The temperature to use. Defaults to 0.7.
         model (str, optional): The model to use. Defaults to DEFAULT_MODEL.
         position (str, optional): The position to use. Defaults to DEFAULT_POSITION.
+        context (str, optional): Additional contextual information (job description, resume, etc.). Defaults to "".
 
     Returns:
         str: The generated answer.
@@ -77,15 +80,25 @@ def generate_answer(
     else:
         system_prompt += LONG_INSTRUCTION
 
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": system_prompt},
+    ]
+    context_block: str = context.strip()
+    if context_block:
+        messages.append(
+            {
+                "role": "user",
+                "content": "Reference information:\n" + context_block,
+            }
+        )
+    messages.append({"role": "user", "content": transcript})
+
     # Generate answer
     try:
         response: ChatCompletion = client.chat.completions.create(
             model=model,
             temperature=temperature,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": transcript},
-            ],
+            messages=messages,
         )
     except Exception as error:
         logger.error(f"Can't generate answer: {error}")
