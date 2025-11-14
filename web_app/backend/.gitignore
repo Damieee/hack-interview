@@ -1,0 +1,22 @@
+# Python / FastAPI artifacts
+__pycache__/
+*.py[cod]
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+.env
+.env.*
+!.env.example
+
+# uv / build
+uv.lock
+build/
+dist/
+
+# Local recordings / uploads
+recordings/
+
