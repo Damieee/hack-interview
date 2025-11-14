@@ -1,7 +1,10 @@
+import os
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from .config import Settings, get_settings
@@ -81,5 +84,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             model=model or config.vision_model,
         )
         return ImageQuestionResponse(**payload)
+
+    frontend_dist = os.getenv("FRONTEND_DIST")
+    if frontend_dist:
+        dist_path = Path(frontend_dist)
+        if dist_path.is_dir():
+            logger.info("Serving built frontend from %s", dist_path)
+            app.mount("/", StaticFiles(directory=str(dist_path), html=True), name="frontend")
 
     return app
