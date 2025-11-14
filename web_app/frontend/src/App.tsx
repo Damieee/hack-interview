@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -42,6 +42,12 @@ function App() {
   const [screenshotSupported, setScreenshotSupported] = useState<boolean>(
     !!navigator.mediaDevices?.getDisplayMedia,
   );
+  const [cameraSupported] = useState<boolean>(
+    !!navigator.mediaDevices?.getUserMedia,
+  );
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const contextSummary = useMemo(() => {
     const entries = Object.entries(contextFields)
@@ -144,6 +150,59 @@ function App() {
     }
   }, [handleImageUpload]);
 
+  const stopCamera = useCallback(() => {
+    cameraStream?.getTracks().forEach((track) => track.stop());
+    setCameraStream(null);
+    setCameraActive(false);
+  }, [cameraStream]);
+
+  useEffect(() => {
+    if (cameraStream && videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+      videoRef.current.play().catch(() => {
+        setImageError("Unable to start camera preview.");
+        stopCamera();
+      });
+    }
+  }, [cameraStream, stopCamera]);
+
+  const requestCameraPreview = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setImageError("Camera capture is not supported in this browser.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
+      setCameraStream(stream);
+      setCameraActive(true);
+    } catch (err) {
+      setImageError(
+        err instanceof Error
+          ? err.message
+          : "Unable to access camera. Please allow permissions.",
+      );
+    }
+  }, []);
+
+  const snapPhoto = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const context = canvas.getContext("2d");
+    context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.9),
+    );
+    if (blob) {
+      await handleImageUpload(blob);
+    }
+    stopCamera();
+  }, [handleImageUpload, stopCamera]);
+
   return (
     <div className="app-shell">
       <ContextPanel
@@ -243,7 +302,14 @@ function App() {
             value={imageOptions}
             onChange={(event) => setImageOptions(event.target.value)}
           />
-          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "0.75rem",
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
             <label className="upload-button">
               <input
                 type="file"
@@ -261,6 +327,14 @@ function App() {
               onClick={requestScreenshot}
             >
               🖥️ Capture Screen
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={!cameraSupported || imageLoading}
+              onClick={requestCameraPreview}
+            >
+              📸 Use Webcam
             </button>
           </div>
           {imageLoading && <p className="status">Analyzing image…</p>}
@@ -280,6 +354,22 @@ function App() {
           )}
         </section>
       </div>
+
+      {cameraActive && (
+        <div className="camera-overlay">
+          <div className="camera-panel">
+            <video ref={videoRef} autoPlay playsInline muted />
+            <div className="camera-controls">
+              <button onClick={snapPhoto} disabled={imageLoading}>
+                📸 Snap Photo
+              </button>
+              <button className="secondary" onClick={stopCamera}>
+                ✖ Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
