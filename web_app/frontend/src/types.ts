@@ -10,3 +10,8 @@ export type ContextFields = {
   aboutYou: string;
   resume: string;
 };
+
+export type ImageAnswerResponse = {
+  answer: string;
+  selected_option?: string | null;
+};

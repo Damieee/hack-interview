@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from loguru import logger
 from openai import OpenAI
@@ -99,3 +100,65 @@ async def process_interview(
         "quick_answer": quick_answer,
         "full_answer": full_answer,
     }
+
+
+async def answer_from_image(
+    *,
+    file: UploadFile,
+    question: Optional[str],
+    options: Optional[List[str]],
+    model: Optional[str] = None,
+) -> Dict[str, str]:
+    data = await file.read()
+    media_type = file.content_type or "image/png"
+    encoded = base64.b64encode(data).decode("utf-8")
+    data_url = f"data:{media_type};base64,{encoded}"
+
+    question_text = question.strip() if question else ""
+    if not question_text:
+        question_text = "Analyze this image and answer the question shown."
+
+    option_text = ""
+    if options:
+        normalized = [opt.strip() for opt in options if opt.strip()]
+        if normalized:
+            option_text = "\n".join(
+                f"Option {chr(65 + idx)}: {value}" for idx, value in enumerate(normalized)
+            )
+            question_text += (
+                "\nChoose the single best option. Respond with the option label "
+                "(e.g., 'Option A') and a short explanation."
+            )
+
+    logger.debug("Sending image question to model %s", model or settings.vision_model)
+    response = client.responses.create(
+        model=model or settings.vision_model,
+        input=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": question_text},
+                    *(  # options text if provided
+                        [{"type": "input_text", "text": option_text}]
+                        if option_text
+                        else []
+                    ),
+                    {
+                        "type": "input_image",
+                        "image_url": data_url,
+                    },
+                ],
+            }
+        ],
+    )
+    answer_text = response.output[0].content[0].text  # using responses API structure
+
+    selected_option: Optional[str] = None
+    if options:
+        for idx, opt in enumerate(options):
+            label = f"Option {chr(65 + idx)}"
+            if label.lower() in answer_text.lower():
+                selected_option = label
+                break
+
+    return {"answer": answer_text, "selected_option": selected_option}

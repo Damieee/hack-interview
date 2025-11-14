@@ -1,8 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import { ContextPanel } from "./components/ContextPanel";
 import { useRecorder } from "./hooks/useRecorder";
-import { submitInterview } from "./api";
-import type { ContextFields, InterviewResponse } from "./types";
+import { submitImageQuestion, submitInterview } from "./api";
+import type {
+  ContextFields,
+  InterviewResponse,
+  ImageAnswerResponse,
+} from "./types";
 
 const MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"];
 
@@ -17,14 +21,21 @@ function App() {
   const [position, setPosition] = useState("Python Developer");
   const [model, setModel] = useState(MODELS[0]);
   const [contextFields, setContextFields] = useState<ContextFields>(
-    initialContext
+    initialContext,
   );
   const [status, setStatus] = useState<string>("Idle");
   const [error, setError] = useState<string | null>(null);
   const [lastResponse, setLastResponse] = useState<InterviewResponse | null>(
-    null
+    null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [imageOptions, setImageOptions] = useState("");
+  const [imageAnswer, setImageAnswer] = useState<ImageAnswerResponse | null>(
+    null,
+  );
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const contextSummary = useMemo(() => {
     const entries = Object.entries(contextFields)
@@ -49,19 +60,46 @@ function App() {
         setStatus("Complete");
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Unable to process audio."
+          err instanceof Error ? err.message : "Unable to process audio.",
         );
         setStatus("Error");
       } finally {
         setIsSubmitting(false);
       }
     },
-    [contextFields, model, position]
+    [contextFields, model, position],
   );
 
   const { isRecording, start, stop, error: recorderError } = useRecorder({
     onSegment: handleSegment,
   });
+
+  const handleImageUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      setImageLoading(true);
+      setImageError(null);
+      setImageAnswer(null);
+      try {
+        const response = await submitImageQuestion({
+          image: file,
+          prompt: imagePrompt,
+          options: imageOptions,
+          model,
+        });
+        setImageAnswer(response);
+      } catch (err) {
+        setImageError(
+          err instanceof Error ? err.message : "Unable to analyze image.",
+        );
+      } finally {
+        setImageLoading(false);
+        event.target.value = "";
+      }
+    },
+    [imagePrompt, imageOptions, model],
+  );
 
   return (
     <div className="app-shell">
@@ -92,7 +130,10 @@ function App() {
 
         <section>
           <label>Model</label>
-          <select value={model} onChange={(event) => setModel(event.target.value)}>
+          <select
+            value={model}
+            onChange={(event) => setModel(event.target.value)}
+          >
             {MODELS.map((entry) => (
               <option key={entry} value={entry}>
                 {entry}
@@ -101,7 +142,7 @@ function App() {
           </select>
         </section>
 
-        <section style={{ display: "flex", gap: "0.75rem" }}>
+        <section style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           <button onClick={start} disabled={isRecording}>
             🎙️ Start Recording
           </button>
@@ -137,6 +178,47 @@ function App() {
           <pre className="transcript">
             {contextSummary || "No context supplied yet."}
           </pre>
+        </section>
+
+        <section className="panel">
+          <h3>Camera Question (mobile friendly)</h3>
+          <p>
+            Open this site on your phone, tap “Choose file”, and take a photo of
+            the question. The model will analyze the screenshot/photo and pick
+            the best option.
+          </p>
+          <label>Additional Prompt (optional)</label>
+          <input
+            placeholder="e.g. Choose the correct answer"
+            value={imagePrompt}
+            onChange={(event) => setImagePrompt(event.target.value)}
+          />
+          <label>Options (newline or semicolon separated)</label>
+          <textarea
+            rows={3}
+            placeholder={"Option A) …\nOption B) …"}
+            value={imageOptions}
+            onChange={(event) => setImageOptions(event.target.value)}
+          />
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleImageUpload}
+          />
+          {imageLoading && <p className="status">Analyzing image…</p>}
+          {imageError && <p className="error">{imageError}</p>}
+          {imageAnswer && (
+            <div className="panel" style={{ marginTop: "0.75rem" }}>
+              <h4>Vision Answer</h4>
+              {imageAnswer.selected_option && (
+                <p>
+                  <strong>Selected:</strong> {imageAnswer.selected_option}
+                </p>
+              )}
+              <p>{imageAnswer.answer}</p>
+            </div>
+          )}
         </section>
       </div>
     </div>

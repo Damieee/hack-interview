@@ -1,4 +1,8 @@
-import type { InterviewResponse, ContextFields } from "./types";
+import type {
+  InterviewResponse,
+  ContextFields,
+  ImageAnswerResponse,
+} from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -41,3 +45,40 @@ export async function submitInterview({
   return (await response.json()) as InterviewResponse;
 }
 
+type ImageQuestionArgs = {
+  image: Blob;
+  prompt: string;
+  options: string;
+  model?: string;
+};
+
+export async function submitImageQuestion({
+  image,
+  prompt,
+  options,
+  model,
+}: ImageQuestionArgs): Promise<ImageAnswerResponse> {
+  const formData = new FormData();
+  formData.append("image", image, "question.jpg");
+  formData.append("prompt", prompt);
+  formData.append("options", options);
+  if (model) {
+    formData.append("model", model);
+  }
+
+  const response = await fetch(`${API_URL}/api/image-question`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(
+      `Vision API error (${response.status}): ${
+        message || "Unable to analyze image"
+      }`
+    );
+  }
+
+  return (await response.json()) as ImageAnswerResponse;
+}

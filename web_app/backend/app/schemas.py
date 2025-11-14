@@ -10,3 +10,9 @@ class InterviewResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
 
+
+class ImageQuestionResponse(BaseModel):
+    answer: str = Field(..., description="Model's answer or explanation.")
+    selected_option: str | None = Field(
+        default=None, description="Chosen option (if provided)."
+    )

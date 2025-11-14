@@ -1,10 +1,16 @@
+from typing import Optional
+
 from fastapi import Depends, FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from .config import Settings, get_settings
-from .schemas import HealthResponse, InterviewResponse
-from .services import process_interview
+from .schemas import (
+    HealthResponse,
+    ImageQuestionResponse,
+    InterviewResponse,
+)
+from .services import answer_from_image, process_interview
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -47,5 +53,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             model=model or settings.default_model,
         )
         return InterviewResponse(**payload)
+
+    @app.post("/api/image-question", response_model=ImageQuestionResponse)
+    async def image_question_endpoint(
+        image: UploadFile = File(..., description="Photo or screenshot to analyze"),
+        prompt: str = Form(
+            "",
+            description="Optional additional question text if the screenshot lacks context.",
+        ),
+        options: str = Form(
+            "",
+            description="Optional multi-line or semicolon separated answer choices.",
+        ),
+        model: Optional[str] = Form(None),
+    ) -> ImageQuestionResponse:
+        option_list: list[str] = []
+        if options:
+            if ";" in options:
+                option_list = [part.strip() for part in options.split(";")]
+            else:
+                option_list = [line.strip() for line in options.splitlines()]
+
+        payload = await answer_from_image(
+            file=image,
+            question=prompt,
+            options=option_list,
+            model=model or config.vision_model,
+        )
+        return ImageQuestionResponse(**payload)
 
     return app

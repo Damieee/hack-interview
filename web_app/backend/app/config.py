@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
     default_model: str = Field("gpt-4o-mini", alias="DEFAULT_MODEL")
     default_position: str = Field("Python Developer", alias="DEFAULT_POSITION")
+    vision_model: str = Field("gpt-4o-mini", alias="VISION_MODEL")
     allow_origins: list[str] = Field(default=["*"])
 
     class Config:
