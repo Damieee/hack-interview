@@ -13,6 +13,7 @@ from .config import get_settings
 from .schemas import HistoryEntry
 
 _redis: Redis | None = None
+HISTORY_KEY = "history:global"
 
 
 def _get_client() -> Redis:
@@ -26,14 +27,7 @@ def _get_client() -> Redis:
     return _redis
 
 
-def _key(session_id: str) -> str:
-    return f"history:{session_id}"
-
-
-async def save_history_entry(session_id: str, payload: dict[str, Any]) -> None:
-    if not session_id:
-        logger.warning("Missing session id, skip history persistence.")
-        return
+async def save_history_entry(payload: dict[str, Any]) -> None:
     client = _get_client()
     settings = get_settings()
     entry = {
@@ -42,18 +36,14 @@ async def save_history_entry(session_id: str, payload: dict[str, Any]) -> None:
         **payload,
     }
     record = json.dumps(entry)
-    key = _key(session_id)
-    await client.lpush(key, record)
-    await client.ltrim(key, 0, 49)
-    await client.expire(key, settings.history_ttl_seconds)
+    await client.lpush(HISTORY_KEY, record)
+    await client.ltrim(HISTORY_KEY, 0, 99)
+    await client.expire(HISTORY_KEY, settings.history_ttl_seconds)
 
 
-async def fetch_history_entries(session_id: str) -> List[HistoryEntry]:
-    if not session_id:
-        return []
+async def fetch_history_entries() -> List[HistoryEntry]:
     client = _get_client()
-    key = _key(session_id)
-    rows = await client.lrange(key, 0, 49)
+    rows = await client.lrange(HISTORY_KEY, 0, 99)
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=get_settings().history_ttl_seconds)
     entries: list[HistoryEntry] = []
     for raw in rows:

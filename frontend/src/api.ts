@@ -11,33 +11,6 @@ const API_URL =
   import.meta.env.VITE_API_URL ??
   (typeof window !== "undefined" ? window.location.origin : "http://localhost:8000");
 
-const SESSION_KEY = "interview-assistant-session";
-const SESSION_OVERRIDE = import.meta.env.VITE_SESSION_ID;
-
-function ensureSessionId(): string {
-  if (SESSION_OVERRIDE) {
-    return SESSION_OVERRIDE;
-  }
-  if (typeof window === "undefined") {
-    return "server";
-  }
-  try {
-    const storage = window.localStorage;
-    let sessionId = storage.getItem(SESSION_KEY);
-    if (!sessionId) {
-      const fallback = Math.random().toString(36).slice(2);
-      sessionId =
-        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : fallback;
-      storage.setItem(SESSION_KEY, sessionId);
-    }
-    return sessionId;
-  } catch {
-    return "server";
-  }
-}
-
 type SubmitArgs = ContextFields & {
   audioBlob: Blob;
   position: string;
@@ -65,9 +38,6 @@ export async function submitInterview({
   const response = await fetch(`${API_URL}/api/interview`, {
     method: "POST",
     body: formData,
-    headers: {
-      "X-Session-Id": ensureSessionId(),
-    },
   });
 
   if (!response.ok) {
@@ -104,9 +74,6 @@ export async function submitImageQuestion({
   const response = await fetch(`${API_URL}/api/image-question`, {
     method: "POST",
     body: formData,
-    headers: {
-      "X-Session-Id": ensureSessionId(),
-    },
   });
 
   if (!response.ok) {
@@ -123,9 +90,6 @@ export async function submitImageQuestion({
 
 export async function fetchHistory(): Promise<HistoryEntry[]> {
   const response = await fetch(`${API_URL}/api/history`, {
-    headers: {
-      "X-Session-Id": ensureSessionId(),
-    },
   });
   if (!response.ok) {
     const message = await response.text();
