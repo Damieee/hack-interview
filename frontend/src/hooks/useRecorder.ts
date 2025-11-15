@@ -21,21 +21,35 @@ export function useRecorder({ onSegment }: Options) {
       });
 
       let systemStream: MediaStream | null = null;
+      let systemAudioTracks: MediaStreamTrack[] = [];
       if (navigator.mediaDevices?.getDisplayMedia) {
         try {
-          systemStream = await navigator.mediaDevices.getDisplayMedia({
+          const capture = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              displaySurface: "browser",
+            },
             audio: true,
-            video: false,
           });
+          const audioTracks = capture.getAudioTracks();
+          if (audioTracks.length) {
+            systemStream = capture;
+            systemAudioTracks = audioTracks;
+            capture.getVideoTracks().forEach((track) => {
+              track.stop();
+              capture.removeTrack(track);
+            });
+          } else {
+            capture.getTracks().forEach((track) => track.stop());
+            console.warn(
+              "Display capture granted but no audio track available. Ensure you share a tab/window with audio."
+            );
+          }
         } catch (displayErr) {
           console.warn("System audio capture unavailable:", displayErr);
         }
       }
 
-      const tracks = [
-        ...micStream.getAudioTracks(),
-        ...(systemStream?.getAudioTracks() ?? []),
-      ];
+      const tracks = [...micStream.getAudioTracks(), ...systemAudioTracks];
 
       if (!tracks.length) {
         throw new Error("No audio sources available.");
