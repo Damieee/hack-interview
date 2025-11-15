@@ -4,7 +4,11 @@ import type {
   ImageAnswerResponse,
 } from "./types";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// Prefer explicit VITE_API_URL (set via .env during dev or Docker build). When the
+// frontend is served by the backend in production, fall back to the current origin.
+const API_URL =
+  import.meta.env.VITE_API_URL ??
+  (typeof window !== "undefined" ? window.location.origin : "http://localhost:8000");
 
 type SubmitArgs = ContextFields & {
   audioBlob: Blob;
