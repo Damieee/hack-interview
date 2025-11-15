@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from loguru import logger
 from openai import OpenAI
@@ -102,6 +102,23 @@ async def process_interview(
     }
 
 
+def _extract_response_text(response: object) -> str:
+    output = getattr(response, "output", None) or []
+    for block in output:
+        contents = getattr(block, "content", None) or []
+        for entry in contents:
+            text = getattr(entry, "text", None)
+            if text:
+                return text
+    fallback = getattr(response, "output_text", None)
+    if isinstance(fallback, Sequence) and not isinstance(fallback, (str, bytes)):
+        return " ".join(str(part) for part in fallback if part)
+    if fallback:
+        return str(fallback)
+    logger.warning("Model response did not include text output.")
+    return "Unable to extract response from model."
+
+
 async def answer_from_image(
     *,
     file: UploadFile,
@@ -166,7 +183,7 @@ async def answer_from_image(
                 {"role": "user", "content": user_blocks},
             ],
         )
-        return response.output[0].content[0].text
+        return _extract_response_text(response)
 
     answer_text = _call()
 

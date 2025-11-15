@@ -13,7 +13,7 @@ import type {
   HistoryEntry,
 } from "./types";
 
-const MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"];
+const MODELS = ["gpt-5", "gpt-4o", "gpt-4.1-mini"];
 
 const initialContext: ContextFields = {
   jobDescription: "",
