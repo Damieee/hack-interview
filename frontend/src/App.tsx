@@ -251,6 +251,26 @@ function App() {
     }
   }, [handleImageUpload, requestCameraPreview, stopCamera]);
 
+  useEffect(() => {
+    if (!cameraActive) return;
+    const handleVolumeButton = (event: KeyboardEvent) => {
+      const key = event.key?.toLowerCase();
+      const code = event.code?.toLowerCase();
+      const isVolumeDown =
+        key === "audiovolumedown" || key === "volumedown" || code === "volumedown";
+      if (!isVolumeDown) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!imageLoading) {
+        void snapPhoto();
+      }
+    };
+    window.addEventListener("keydown", handleVolumeButton, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", handleVolumeButton);
+    };
+  }, [cameraActive, imageLoading, snapPhoto]);
+
   return (
     <div className="app-shell">
       <div className="panel context-panel">
