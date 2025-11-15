@@ -49,6 +49,7 @@ function App() {
   );
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraLoopActive, setCameraLoopActive] = useState(false);
   const [sidePanelView, setSidePanelView] = useState<"documents" | "answers">(
     "documents",
   );
@@ -56,6 +57,7 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraLoopRef = useRef(false);
 
   const contextSummary = useMemo(() => {
     const entries = Object.entries(contextFields)
@@ -179,6 +181,10 @@ function App() {
     }
   }, [handleImageUpload]);
 
+  useEffect(() => {
+    cameraLoopRef.current = cameraLoopActive;
+  }, [cameraLoopActive]);
+
   const stopCamera = useCallback(() => {
     cameraStream?.getTracks().forEach((track) => track.stop());
     setCameraStream(null);
@@ -215,6 +221,16 @@ function App() {
     }
   }, []);
 
+  const startCameraLoop = useCallback(() => {
+    setCameraLoopActive(true);
+    void requestCameraPreview();
+  }, [requestCameraPreview]);
+
+  const cancelCameraLoop = useCallback(() => {
+    setCameraLoopActive(false);
+    stopCamera();
+  }, [stopCamera]);
+
   const snapPhoto = useCallback(async () => {
     const video = videoRef.current;
     if (!video) return;
@@ -226,11 +242,14 @@ function App() {
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/jpeg", 0.9),
     );
+    stopCamera();
     if (blob) {
       await handleImageUpload(blob);
     }
-    stopCamera();
-  }, [handleImageUpload, stopCamera]);
+    if (cameraLoopRef.current) {
+      await requestCameraPreview();
+    }
+  }, [handleImageUpload, requestCameraPreview, stopCamera]);
 
   return (
     <div className="app-shell">
@@ -388,7 +407,7 @@ function App() {
               type="button"
               className="secondary"
               disabled={!cameraSupported || imageLoading}
-              onClick={requestCameraPreview}
+              onClick={startCameraLoop}
             >
               📸 Use Webcam
             </button>
@@ -419,7 +438,7 @@ function App() {
               <button onClick={snapPhoto} disabled={imageLoading}>
                 📸 Snap Photo
               </button>
-              <button className="secondary" onClick={stopCamera}>
+              <button className="secondary" onClick={cancelCameraLoop}>
                 ✖ Cancel
               </button>
             </div>
