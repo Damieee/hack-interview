@@ -216,12 +216,11 @@ function App() {
         ? "single-shot"
         : null;
     if (!desiredMode) return;
-    const focusConstraints = {
-      advanced: [{ focusMode: desiredMode }],
-    } as unknown as MediaTrackConstraints;
-    void track.applyConstraints(focusConstraints).catch((err) => {
-      console.warn("Unable to enforce camera focus:", err);
-    });
+    void track
+      .applyConstraints({ advanced: [{ focusMode: desiredMode }] })
+      .catch((err) => {
+        console.warn("Unable to enforce camera focus:", err);
+      });
   }, []);
 
   const requestCameraPreview = useCallback(async () => {
@@ -322,6 +321,26 @@ function App() {
     window.addEventListener("keydown", handleVolumeButton, { passive: false });
     return () => {
       window.removeEventListener("keydown", handleVolumeButton);
+    };
+  }, [cameraActive, imageLoading, snapPhoto]);
+
+  useEffect(() => {
+    if (!cameraActive) return;
+    const handleTapToCapture = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (!target.closest(".camera-overlay")) return;
+      if (target.closest(".camera-controls")) return;
+      if (imageLoading) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void snapPhoto();
+    };
+    window.addEventListener("click", handleTapToCapture, { passive: false });
+    window.addEventListener("touchend", handleTapToCapture, { passive: false });
+    return () => {
+      window.removeEventListener("click", handleTapToCapture);
+      window.removeEventListener("touchend", handleTapToCapture);
     };
   }, [cameraActive, imageLoading, snapPhoto]);
 
