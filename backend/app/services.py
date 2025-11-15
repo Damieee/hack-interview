@@ -56,7 +56,7 @@ def generate_answer(
 ) -> str:
     prompt = build_context_prompt(position, context, short)
     logger.debug("Generating %s answer", "short" if short else "full")
-    temperature = 0.0 if short else 0.7
+    temperature = 0.0 if short else 0.2
     request_kwargs: Dict[str, Any] = {
         "model": model,
         "messages": [
