@@ -3,12 +3,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { ContextPanel } from "./components/ContextPanel";
+import { HistoryPanel } from "./components/HistoryPanel";
 import { useRecorder } from "./hooks/useRecorder";
-import { submitImageQuestion, submitInterview } from "./api";
+import { fetchHistory, submitImageQuestion, submitInterview } from "./api";
 import type {
   ContextFields,
   InterviewResponse,
   ImageAnswerResponse,
+  HistoryEntry,
 } from "./types";
 
 const MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"];
@@ -47,6 +49,12 @@ function App() {
   );
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [sidePanelView, setSidePanelView] = useState<"documents" | "answers">(
+    "documents",
+  );
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const contextSummary = useMemo(() => {
@@ -55,6 +63,25 @@ function App() {
       .map(([key, value]) => `${key}: ${value.trim()}`);
     return entries.join("\n\n");
   }, [contextFields]);
+
+  const refreshHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const entries = await fetchHistory();
+      setHistoryEntries(entries);
+    } catch (err) {
+      setHistoryError(
+        err instanceof Error ? err.message : "Unable to load saved answers.",
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshHistory();
+  }, [refreshHistory]);
 
   const handleSegment = useCallback(
     async (blob: Blob) => {
@@ -70,6 +97,7 @@ function App() {
         });
         setLastResponse(response);
         setStatus("Complete");
+        await refreshHistory();
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Unable to process audio.",
@@ -79,7 +107,7 @@ function App() {
         setIsSubmitting(false);
       }
     },
-    [contextFields, model, position],
+    [contextFields, model, position, refreshHistory],
   );
 
   const { isRecording, start, stop, error: recorderError } = useRecorder({
@@ -100,6 +128,7 @@ function App() {
           model,
         });
         setImageAnswer(response);
+        await refreshHistory();
       } catch (err) {
         setImageError(
           err instanceof Error ? err.message : "Unable to analyze image.",
@@ -108,7 +137,7 @@ function App() {
         setImageLoading(false);
       }
     },
-    [imagePrompt, imageOptions, model],
+    [imagePrompt, imageOptions, model, refreshHistory],
   );
 
   const requestScreenshot = useCallback(async () => {
@@ -205,12 +234,39 @@ function App() {
 
   return (
     <div className="app-shell">
-      <ContextPanel
-        values={contextFields}
-        onChange={(fields) =>
-          setContextFields((prev) => ({ ...prev, ...fields }))
-        }
-      />
+      <div className="panel context-panel">
+        <div className="side-panel-tabs">
+          <button
+            type="button"
+            className={sidePanelView === "documents" ? "active" : ""}
+            onClick={() => setSidePanelView("documents")}
+          >
+            Documents
+          </button>
+          <button
+            type="button"
+            className={sidePanelView === "answers" ? "active" : ""}
+            onClick={() => setSidePanelView("answers")}
+          >
+            Answers
+          </button>
+        </div>
+        {sidePanelView === "documents" ? (
+          <ContextPanel
+            values={contextFields}
+            onChange={(fields) =>
+              setContextFields((prev) => ({ ...prev, ...fields }))
+            }
+          />
+        ) : (
+          <HistoryPanel
+            entries={historyEntries}
+            loading={historyLoading}
+            error={historyError}
+            onRefresh={refreshHistory}
+          />
+        )}
+      </div>
 
       <div className="panel main-panel">
         <header>

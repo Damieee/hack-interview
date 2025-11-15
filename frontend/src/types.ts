@@ -15,3 +15,18 @@ export type ImageAnswerResponse = {
   answer: string;
   selected_option?: string | null;
 };
+
+export type HistoryEntry = {
+  id: string;
+  entry_type: "interview" | "vision";
+  created_at: string;
+  transcript?: string | null;
+  quick_answer?: string | null;
+  full_answer?: string | null;
+  answer?: string | null;
+  selected_option?: string | null;
+  prompt?: string | null;
+  options?: string[] | null;
+  position?: string | null;
+  model?: string | null;
+};

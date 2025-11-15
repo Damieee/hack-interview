@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -16,3 +19,18 @@ class ImageQuestionResponse(BaseModel):
     selected_option: str | None = Field(
         default=None, description="Chosen option (if provided)."
     )
+
+
+class HistoryEntry(BaseModel):
+    id: str
+    entry_type: Literal["interview", "vision"]
+    created_at: datetime
+    transcript: str | None = None
+    quick_answer: str | None = None
+    full_answer: str | None = None
+    answer: str | None = None
+    selected_option: str | None = None
+    prompt: str | None = None
+    options: list[str] | None = None
+    position: str | None = None
+    model: str | None = None

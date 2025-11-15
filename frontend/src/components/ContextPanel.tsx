@@ -29,7 +29,7 @@ export function ContextPanel({ values, onChange }: Props) {
   };
 
   return (
-    <div className="panel context-panel">
+    <>
       <h2>Interview Context</h2>
       <p>
         Paste details about the role, company, and yourself. The model will use
@@ -59,6 +59,6 @@ export function ContextPanel({ values, onChange }: Props) {
           />
         </section>
       ))}
-    </div>
+    </>
   );
 }

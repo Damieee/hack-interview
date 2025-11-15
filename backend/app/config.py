@@ -24,6 +24,8 @@ class Settings(BaseSettings):
         default="development", alias="APP_ENV"
     )
     openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
+    redis_url: str = Field(..., alias="REDIS_URL")
+    history_ttl_seconds: int = Field(60 * 60 * 24, alias="HISTORY_TTL_SECONDS")
     default_model: str = Field("gpt-4o-mini", alias="DEFAULT_MODEL")
     default_position: str = Field("Python Developer", alias="DEFAULT_POSITION")
     vision_model: str = Field("gpt-4o-mini", alias="VISION_MODEL")

@@ -2,15 +2,17 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from .config import Settings, get_settings
+from .history import fetch_history_entries, save_history_entry
 from .schemas import (
     HealthResponse,
     ImageQuestionResponse,
+    HistoryEntry,
     InterviewResponse,
 )
 from .services import answer_from_image, process_interview
@@ -19,6 +21,11 @@ from .services import answer_from_image, process_interview
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or get_settings()
     app = FastAPI(title="Interview Assistant API", version="0.1.0")
+
+    async def get_session_id(x_session_id: str = Header(default=None, alias="X-Session-Id")) -> str:
+        if not x_session_id:
+            raise HTTPException(status_code=400, detail="X-Session-Id header is required.")
+        return x_session_id
 
     app.add_middleware(
         CORSMiddleware,
@@ -42,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         about_you: str = Form("", description="Candidate summary text"),
         resume: str = Form("", description="Resume highlights"),
         settings: Settings = Depends(get_settings),
+        session_id: str = Depends(get_session_id),
     ) -> InterviewResponse:
         logger.info("Processing interview snippet for position %s", position)
         payload = await process_interview(
@@ -55,7 +63,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             model=model or settings.default_model,
         )
-        return InterviewResponse(**payload)
+        response = InterviewResponse(**payload)
+        await save_history_entry(
+            session_id,
+            {
+                "entry_type": "interview",
+                "transcript": response.transcript,
+                "quick_answer": response.quick_answer,
+                "full_answer": response.full_answer,
+                "position": position or settings.default_position,
+                "model": model or settings.default_model,
+            },
+        )
+        return response
 
     @app.post("/api/image-question", response_model=ImageQuestionResponse)
     async def image_question_endpoint(
@@ -69,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             description="Optional multi-line or semicolon separated answer choices.",
         ),
         model: Optional[str] = Form(None),
+        session_id: str = Depends(get_session_id),
     ) -> ImageQuestionResponse:
         option_list: list[str] = []
         if options:
@@ -83,7 +104,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             options=option_list,
             model=model or config.vision_model,
         )
-        return ImageQuestionResponse(**payload)
+        response = ImageQuestionResponse(**payload)
+        await save_history_entry(
+            session_id,
+            {
+                "entry_type": "vision",
+                "answer": response.answer,
+                "selected_option": response.selected_option,
+                "prompt": prompt,
+                "options": option_list,
+                "model": model or config.vision_model,
+            },
+        )
+        return response
+
+    @app.get("/api/history", response_model=list[HistoryEntry])
+    async def history_endpoint(session_id: str = Depends(get_session_id)) -> list[HistoryEntry]:
+        return await fetch_history_entries(session_id)
 
     frontend_dist = os.getenv("FRONTEND_DIST")
     if frontend_dist:
