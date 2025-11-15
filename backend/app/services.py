@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from loguru import logger
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 from starlette.datastructures import UploadFile
 
 from .config import get_settings
@@ -56,14 +56,31 @@ def generate_answer(
 ) -> str:
     prompt = build_context_prompt(position, context, short)
     logger.debug("Generating %s answer", "short" if short else "full")
-    response = client.chat.completions.create(
-        model=model,
-        temperature=0.0 if short else 0.7,
-        messages=[
+    temperature = 0.0 if short else 0.7
+    request_kwargs: Dict[str, Any] = {
+        "model": model,
+        "messages": [
             {"role": "system", "content": prompt},
             {"role": "user", "content": transcript},
         ],
-    )
+    }
+    if temperature is not None:
+        request_kwargs["temperature"] = temperature
+
+    try:
+        response = client.chat.completions.create(**request_kwargs)
+    except BadRequestError as exc:
+        message = str(exc).lower()
+        if "temperature" in message:
+            logger.warning(
+                "Model %s rejected temperature=%s; retrying with default.",
+                model,
+                temperature,
+            )
+            request_kwargs.pop("temperature", None)
+            response = client.chat.completions.create(**request_kwargs)
+        else:
+            raise
     return response.choices[0].message.content
 
 
