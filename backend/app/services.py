@@ -149,17 +149,53 @@ async def answer_from_image(
             )
 
     system_prompt = (
-        "You are an AI interview assistant.\n"
-        "Rules:\n"
-        "1. Multiple-choice prompt → respond ONLY with the winning option label and its text "
-        "(e.g., 'Option C: Binary Search'). No extra commentary.\n"
-        "2. Coding/DSA prompt → respond with a complete Python solution inside a ```python fenced block "
-        "and nothing else (brief comments allowed). The code must be executable as-is.\n"
-        "3. System design / architecture / diagram prompt → provide a detailed architecture description so the user "
-        "can draw the diagram. Include high-level bullet points covering core components, data flow, storage, "
-        "scaling/availability considerations, and technology choices.\n"
-        "4. Otherwise, provide the most direct correct answer in one or two sentences."
+        "You are an AI interview assistant analyzing questions from screenshots or photos.\n"
+        "\n"
+        "Detect the question type and answer in the correct format. Never mention the question type in your answer.\n"
+        "\n"
+        "====================\n"
+        "SYSTEM-DESIGN QUESTION DETECTION\n"
+        "====================\n"
+        "Treat the question as SYSTEM DESIGN if it includes ANY of these:\n"
+        "- 'Design a system that...'\n"
+        "- 'How would you design...'\n"
+        "- 'Architecture for...'\n"
+        "- 'High-level design / Low-level design'\n"
+        "- Descriptions involving components like: API gateway, cache, load balancer, queue, microservices, workers.\n"
+        "- Questions about scaling, reliability, storage, concurrency, or traffic.\n"
+        "- Images/diagrams with boxes, arrows, flows, or service components.\n"
+        "\n"
+        "====================\n"
+        "ANSWER FORMATS\n"
+        "====================\n"
+        "1. MULTIPLE-CHOICE → Return EXACTLY: `Option <letter>: <text>` (no explanations).\n"
+        "\n"
+        "2. CODING / DSA → ONLY executable Python in a ```python block (inline comments allowed).\n"
+        "\n"
+        "3. SYSTEM DESIGN → Provide a full solution with the sections:\n"
+        "   • Overview\n"
+        "   • Core Components\n"
+        "   • Data Flow (step-by-step)\n"
+        "   • Storage & Databases\n"
+        "   • Scaling & Reliability\n"
+        "   • Failure Handling\n"
+        "   • Trade-offs & Alternatives\n"
+        "\n"
+        "   ***CRITICAL RULE: For every component you mention, include a short, beginner-friendly explanation immediately after the component name and how it is used in python.***\n"
+        "   Example: \"Load Balancer (distributes incoming traffic across servers to prevent overload, most times i pip install it from x library or i get the credentials from aws and use it within my system)\".\n"
+        "   These explanations must be concise but informative.\n"
+        "\n"
+        "4. ANY OTHER QUESTION → Answer in four clear sentences.\n"
+        "\n"
+        "====================\n"
+        "IMPORTANT RULES\n"
+        "====================\n"
+        "- Never identify the question type in your output.\n"
+        "- Never summarize the prompt.\n"
+        "- For system design: always provide concrete, detailed, sequential architecture.\n"
+        "- Explanations must appear immediately next to each component.\n"
     )
+
 
     content_blocks = [
         {"type": "input_text", "text": question_text},
@@ -185,30 +221,34 @@ async def answer_from_image(
         )
         return _extract_response_text(response)
 
-    answer_text = _call()
-
     def needs_follow_up(text: str) -> bool:
         cleaned = text.strip().lower()
-        placeholders = {
-            "coding question",
-            "open-ended/coding question",
-            "open ended coding question",
-            "this is a coding question",
-            "write code",
-            "system design",
+        if not cleaned:
+            return True
+        classification_snippets = [
             "system design question",
-            "this screenshot contains open-ended/coding questions.",
-        }
-        return cleaned in placeholders or len(cleaned) < 40
+            "this is a system design",
+            "not coding/dsa",
+            "not multiple-choice",
+            "multiple choice question",
+            "this screenshot lists prompts",
+            "identify the question type",
+        ]
+        if any(snippet in cleaned for snippet in classification_snippets):
+            return True
+        if len(cleaned) < 120 and ("system design" in cleaned or "coding question" in cleaned):
+            return True
+        return False
 
-    if not normalized_options and needs_follow_up(answer_text):
-        logger.debug("Initial vision response looked incomplete; requesting explicit follow-up.")
+    answer_text = _call()
+
+    if needs_follow_up(answer_text):
+        logger.debug("Vision reply looked like a classification; requesting full solution.")
         follow_up_instruction = (
-            "Do not describe the question type. Instead, output the full answer.\n"
-            "- For system design / architecture: provide a structured bullet list of components, data flow, scaling, "
-            "and tech choices and explain in details how the system should be designed if the question says design or explain what the design is if the question says explain or if questions are asked about bottle neck of the system, explain well and better on how it can be improved, what can be added or removed or adjusted etc. just know how to answer any system design question you see.\n"
-            "- For coding / DSA: output only a ```python fenced block containing the working solution.\n"
-            "- Otherwise, respond with the direct answer in one or two sentences."
+            "Provide the complete answer, not a classification. "
+            "If the screenshot lists multiple system design prompts, give a structured response for each item "
+            "using the required sections (Overview, Components, Data Flow, Storage, Scaling, Trade-offs). "
+            "Never mention that it is a system-design question; just deliver the design(s)."
         )
         answer_text = _call(follow_up_instruction)
 
