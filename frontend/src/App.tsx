@@ -59,6 +59,7 @@ function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraLoopRef = useRef(false);
   const captureTrackRef = useRef<MediaStreamTrack | null>(null);
+  const focusIntervalRef = useRef<number | null>(null);
 
   const contextSummary = useMemo(() => {
     const entries = Object.entries(contextFields)
@@ -191,6 +192,10 @@ function App() {
     setCameraStream(null);
     setCameraActive(false);
     captureTrackRef.current = null;
+    if (focusIntervalRef.current !== null) {
+      window.clearInterval(focusIntervalRef.current);
+      focusIntervalRef.current = null;
+    }
   }, [cameraStream]);
 
   useEffect(() => {
@@ -206,6 +211,10 @@ function App() {
   const ensureAutoFocus = useCallback((stream: MediaStream) => {
     const track = stream.getVideoTracks()[0];
     if (!track || typeof track.getCapabilities !== "function") return;
+    if (focusIntervalRef.current !== null) {
+      window.clearInterval(focusIntervalRef.current);
+      focusIntervalRef.current = null;
+    }
     const capabilities = track.getCapabilities() as MediaTrackCapabilities & {
       focusMode?: string[];
     };
@@ -216,12 +225,39 @@ function App() {
         ? "single-shot"
         : null;
     if (!desiredMode) return;
-    const focusConstraints = {
-      advanced: [{ focusMode: desiredMode }],
-    } as unknown as MediaTrackConstraints;
-    void track.applyConstraints(focusConstraints).catch((err) => {
-      console.warn("Unable to enforce camera focus:", err);
-    });
+    const applyFocusConstraints = () => {
+      const focusConstraints = {
+        advanced: [{ focusMode: desiredMode }],
+      } as unknown as MediaTrackConstraints;
+      void track.applyConstraints(focusConstraints).catch((err) => {
+        console.warn("Unable to enforce camera focus:", err);
+      });
+    };
+    applyFocusConstraints();
+    const ImageCaptureCtor =
+      typeof window !== "undefined" ? (window as any).ImageCapture : undefined;
+    if (typeof ImageCaptureCtor === "function") {
+      try {
+        const controller = new ImageCaptureCtor(track);
+        void controller
+          .setOptions({ focusMode: desiredMode })
+          .catch((err: Error) => {
+            console.warn("ImageCapture focus control failed:", err);
+          });
+      } catch (err) {
+        console.warn("Unable to initialize ImageCapture for focus:", err);
+      }
+    }
+    focusIntervalRef.current = window.setInterval(() => {
+      if (track.readyState !== "live") {
+        if (focusIntervalRef.current !== null) {
+          window.clearInterval(focusIntervalRef.current);
+          focusIntervalRef.current = null;
+        }
+        return;
+      }
+      applyFocusConstraints();
+    }, 3000);
   }, []);
 
   const requestCameraPreview = useCallback(async () => {
