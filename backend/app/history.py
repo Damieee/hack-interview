@@ -22,7 +22,7 @@ def _get_client() -> Redis:
     settings = get_settings()
     parsed = urlparse(settings.redis_url)
     use_ssl = parsed.scheme == "rediss" or (parsed.hostname or "").endswith("upstash.io")
-    _redis = Redis.from_url(settings.redis_url, decode_responses=True, ssl=use_ssl)
+    _redis = Redis.from_url(settings.redis_url, decode_responses=True)
     return _redis
 
 
