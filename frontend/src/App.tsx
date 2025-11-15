@@ -216,11 +216,12 @@ function App() {
         ? "single-shot"
         : null;
     if (!desiredMode) return;
-    void track
-      .applyConstraints({ advanced: [{ focusMode: desiredMode }] })
-      .catch((err) => {
-        console.warn("Unable to enforce camera focus:", err);
-      });
+    const focusConstraints = {
+      advanced: [{ focusMode: desiredMode }],
+    } as unknown as MediaTrackConstraints;
+    void track.applyConstraints(focusConstraints).catch((err) => {
+      console.warn("Unable to enforce camera focus:", err);
+    });
   }, []);
 
   const requestCameraPreview = useCallback(async () => {
