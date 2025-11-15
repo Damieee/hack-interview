@@ -58,6 +58,7 @@ function App() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraLoopRef = useRef(false);
+  const captureTrackRef = useRef<MediaStreamTrack | null>(null);
 
   const contextSummary = useMemo(() => {
     const entries = Object.entries(contextFields)
@@ -189,6 +190,7 @@ function App() {
     cameraStream?.getTracks().forEach((track) => track.stop());
     setCameraStream(null);
     setCameraActive(false);
+    captureTrackRef.current = null;
   }, [cameraStream]);
 
   useEffect(() => {
@@ -200,6 +202,26 @@ function App() {
       });
     }
   }, [cameraStream, stopCamera]);
+
+  const ensureAutoFocus = useCallback((stream: MediaStream) => {
+    const track = stream.getVideoTracks()[0];
+    if (!track || typeof track.getCapabilities !== "function") return;
+    const capabilities = track.getCapabilities() as MediaTrackCapabilities & {
+      focusMode?: string[];
+    };
+    const focusModes = capabilities.focusMode ?? [];
+    const desiredMode = focusModes.includes("continuous")
+      ? "continuous"
+      : focusModes.includes("single-shot")
+        ? "single-shot"
+        : null;
+    if (!desiredMode) return;
+    void track
+      .applyConstraints({ advanced: [{ focusMode: desiredMode }] })
+      .catch((err) => {
+        console.warn("Unable to enforce camera focus:", err);
+      });
+  }, []);
 
   const requestCameraPreview = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -214,6 +236,8 @@ function App() {
           height: { ideal: 1080 },
         },
       });
+      ensureAutoFocus(stream);
+      captureTrackRef.current = stream.getVideoTracks()[0] ?? null;
       setCameraStream(stream);
       setCameraActive(true);
     } catch (err) {
@@ -223,7 +247,7 @@ function App() {
           : "Unable to access camera. Please allow permissions.",
       );
     }
-  }, []);
+  }, [ensureAutoFocus]);
 
   const startCameraLoop = useCallback(() => {
     setCameraLoopActive(true);
@@ -236,15 +260,40 @@ function App() {
   }, [stopCamera]);
 
   const snapPhoto = useCallback(async () => {
+    const track = captureTrackRef.current;
+    const ImageCaptureCtor =
+      typeof window !== "undefined" ? (window as any).ImageCapture : undefined;
+    if (track && typeof ImageCaptureCtor === "function") {
+      try {
+        const imageCapture = new ImageCaptureCtor(track);
+        const photo: Blob = await imageCapture.takePhoto({
+          imageWidth: 2048,
+          imageHeight: 1536,
+          fillLightMode: "auto",
+        });
+        stopCamera();
+        await handleImageUpload(photo);
+        if (cameraLoopRef.current) {
+          await requestCameraPreview();
+        }
+        return;
+      } catch (err) {
+        console.warn("High-resolution capture failed, using canvas fallback.", err);
+      }
+    }
+
     const video = videoRef.current;
     if (!video) return;
+    const trackSettings = track?.getSettings?.();
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    const fallbackWidth = video.videoWidth || 1920;
+    const fallbackHeight = video.videoHeight || 1080;
+    canvas.width = trackSettings?.width ?? fallbackWidth;
+    canvas.height = trackSettings?.height ?? fallbackHeight;
     const context = canvas.getContext("2d");
     context?.drawImage(video, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.9),
+      canvas.toBlob(resolve, "image/jpeg", 0.95),
     );
     stopCamera();
     if (blob) {
