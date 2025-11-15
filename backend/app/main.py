@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -23,9 +23,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Interview Assistant API", version="0.1.0")
 
     async def get_session_id(x_session_id: str = Header(default=None, alias="X-Session-Id")) -> str:
-        if not x_session_id:
-            raise HTTPException(status_code=400, detail="X-Session-Id header is required.")
-        return x_session_id
+        if x_session_id:
+            return x_session_id
+        return config.default_session_id
 
     app.add_middleware(
         CORSMiddleware,

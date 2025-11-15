@@ -12,8 +12,12 @@ const API_URL =
   (typeof window !== "undefined" ? window.location.origin : "http://localhost:8000");
 
 const SESSION_KEY = "interview-assistant-session";
+const SESSION_OVERRIDE = import.meta.env.VITE_SESSION_ID;
 
 function ensureSessionId(): string {
+  if (SESSION_OVERRIDE) {
+    return SESSION_OVERRIDE;
+  }
   if (typeof window === "undefined") {
     return "server";
   }
